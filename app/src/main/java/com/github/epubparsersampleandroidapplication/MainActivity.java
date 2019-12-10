@@ -6,6 +6,10 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Bundle;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
@@ -16,15 +20,20 @@ import androidx.viewpager.widget.ViewPager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.Toolbar;
+
+import android.os.Handler;
 import android.text.Html;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -35,6 +44,11 @@ import com.github.mertakdut.CssStatus;
 import com.github.mertakdut.Reader;
 import com.github.mertakdut.exception.OutOfPagesException;
 import com.github.mertakdut.exception.ReadingException;
+
+import java.util.ArrayList;
+
+import research.mmf.gesturelib.AccData;
+import research.mmf.gesturelib.DTWGestureRecognition;
 
 public class MainActivity extends AppCompatActivity implements PageFragment.OnFragmentReadyListener {
 
@@ -62,6 +76,22 @@ public class MainActivity extends AppCompatActivity implements PageFragment.OnFr
 
     private boolean isSkippedToPage = false;
 
+    private static final String TAG = "MainActivity";
+
+    private TextView textView_gesture_name;
+    private Button bt_start_recognition;
+
+    private Boolean recording_sample_gestures = true;
+
+    private SensorManager mSensorManager;
+    private DTWGestureRecognition Recognizer;
+
+    private ArrayList<ArrayList<AccData>> templates = new ArrayList<ArrayList<AccData>>();
+    private ArrayList<String> gesture_names = new ArrayList<>();
+    private ArrayList<AccData> SensorData =  new ArrayList<AccData>();   //gesture data that is to be recognized
+    private int gesture_id = 0;
+    private Boolean StoreSensorData = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -77,6 +107,21 @@ public class MainActivity extends AppCompatActivity implements PageFragment.OnFr
         mViewPager = (ViewPager) findViewById(R.id.container);
         mViewPager.setOffscreenPageLimit(0);
         mViewPager.setAdapter(mSectionsPagerAdapter);
+
+        textView_gesture_name = (TextView)findViewById(R.id.editText_gesture_name);
+
+        bt_start_recognition = (Button)findViewById(R.id.button_record_gesture);
+
+//        bt_start_recognition.setOnClickListener(this);
+
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+
+        mSensorManager.registerListener(acc_listener,
+                mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
+                mSensorManager.SENSOR_DELAY_FASTEST);
+
+        Recognizer = new DTWGestureRecognition();
+
 
         if (getIntent() != null && getIntent().getExtras() != null) {
             String filePath = getIntent().getExtras().getString("filePath");
@@ -295,4 +340,212 @@ public class MainActivity extends AppCompatActivity implements PageFragment.OnFr
             return PageFragment.newInstance(position);
         }
     }
+
+
+    public void onClick(View v)
+    {
+        if(recording_sample_gestures)
+        {
+            bt_start_recognition.setText("Click to enter new templates");
+        }
+        else
+            {
+                bt_start_recognition.setText("Click to recognize gestures");
+            }
+        recording_sample_gestures = !recording_sample_gestures;
+    }
+
+
+    private SensorEventListener acc_listener = new SensorEventListener()
+    {
+        public void onAccuracyChanged(Sensor sensor,int accuracy)
+        {
+
+        }
+
+        public void onSensorChanged(SensorEvent event)
+        {
+            if(StoreSensorData)
+            {
+                float x = event.values[0];
+                float y = event.values[1];
+                float z = event.values[2];
+
+                AccData  data = new AccData(x,y,z);
+
+                Recognizer.Quantization(data);
+
+                if(recording_sample_gestures) {
+                    if(templates!=null)
+                        templates.get(gesture_id).add(data);
+                }
+                else
+                {
+                    SensorData.add(data);
+                }
+            }
+        }
+    };
+
+//    private boolean mBooleanIsPressed = false;
+//
+//    private final Handler handler = new Handler();
+//    private final Runnable runnable = new Runnable() {
+//        public void run() {
+//            checkGlobalVariable();
+//        }
+//    };
+
+//    @Override
+//    public boolean onTouchEvent(MotionEvent event)
+    public boolean dispatchTouchEvent(MotionEvent event)
+    {
+//        if(event.getAction() == MotionEvent.ACTION_DOWN) {
+//            // Execute your Runnable after 5000 milliseconds = 2.5 seconds.
+//            handler.postDelayed(runnable, 2500);
+//            mBooleanIsPressed = true;
+//        }
+//
+//        if(event.getAction() == MotionEvent.ACTION_UP) {
+//            if(mBooleanIsPressed) {
+//                mBooleanIsPressed = false;
+//                handler.removeCallbacks(runnable);
+//            }
+//        }
+
+//        if (android.view.ViewConfiguration.getLongPressTimeout()<2) {
+//        Log.d(TAG, "onTouchEvent: " + android.view.ViewConfiguration.getLongPressTimeout());
+        if(recording_sample_gestures)
+        {
+            //record the data for templates
+            switch(event.getAction())
+            {
+                case MotionEvent.ACTION_DOWN:
+//                    Toast.makeText(getApplicationContext(),"Action down.", Toast.LENGTH_LONG).show();
+                    StoreSensorData = true;
+                    templates.add(new ArrayList<AccData>());
+//                    Log.d(TAG, "onTouchEvent: " + templates);
+                    Log.d(TAG, "Templates:" + templates.size());
+                    Toast.makeText(getApplicationContext(),"Sensor data saved.", Toast.LENGTH_LONG).show();
+                    return false;
+                case MotionEvent.ACTION_UP:
+//                    Toast.makeText(getApplicationContext(),"Action up.", Toast.LENGTH_LONG).show();
+                    StoreSensorData = false;
+                    String gesture = textView_gesture_name.getText().toString();
+                    gesture_names.add(gesture);
+                    gesture_id++;
+                    Toast.makeText(getApplicationContext(),"Enter the " + gesture+ " template.", Toast.LENGTH_LONG).show();
+                    return false;
+                default:
+                    break;
+            }
+        }
+        else
+        {
+            //record the data for recognition
+            switch(event.getAction())
+            {
+                case MotionEvent.ACTION_DOWN:
+                    StoreSensorData = true;
+                    return false;
+                case MotionEvent.ACTION_UP:
+                    StoreSensorData = false;
+                    int WhichGesture = Recognizer.GestureRecognition(templates, SensorData);
+                    String gestureRecognized = gesture_names.get(WhichGesture);
+                    Toast.makeText(getApplicationContext(),"It is " + gestureRecognized, Toast.LENGTH_LONG).show();
+                    if(gestureRecognized == "left")
+                    {
+                        int lastSavedPage = mViewPager.getCurrentItem();
+//                        Toast.makeText(getApplicationContext(),"It is " + lastSavedPage, Toast.LENGTH_LONG).show();
+                        lastSavedPage = lastSavedPage - 1;
+                        mViewPager.setCurrentItem(lastSavedPage);
+                    }
+                    else if(gestureRecognized == "right")
+                    {
+                        int lastSavedPage = mViewPager.getCurrentItem();
+//                        Toast.makeText(getApplicationContext(),"It is " + lastSavedPage, Toast.LENGTH_LONG).show();
+                        lastSavedPage = lastSavedPage + 1;
+                        mViewPager.setCurrentItem(lastSavedPage);
+                    }
+                    else {
+                        Toast.makeText(getApplicationContext(),"It is Nothing ", Toast.LENGTH_LONG).show();
+                    }
+                    SensorData.clear();
+                    return false;
+                default:
+                    break;
+            }
+//        }
+    }
+//        return super.onTouchEvent(event);
+        return super.dispatchTouchEvent(event);
+    }
+
+//    public void checkGlobalVariable(){
+//        if(mBooleanIsPressed){
+//            if(recording_sample_gestures)
+//            {
+//                //record the data for templates
+//                switch(event.getAction())
+//                {
+//                    case MotionEvent.ACTION_DOWN:
+////                    Toast.makeText(getApplicationContext(),"Action down.", Toast.LENGTH_LONG).show();
+//                        StoreSensorData = true;
+//                        templates.add(new ArrayList<AccData>());
+////                    Log.d(TAG, "onTouchEvent: " + templates);
+//                        Log.d(TAG, "Templates:" + templates.size());
+//                        Toast.makeText(getApplicationContext(),"Sensor data saved.", Toast.LENGTH_LONG).show();
+//                        return false;
+//                    case MotionEvent.ACTION_UP:
+////                    Toast.makeText(getApplicationContext(),"Action up.", Toast.LENGTH_LONG).show();
+//                        StoreSensorData = false;
+//                        String gesture = textView_gesture_name.getText().toString();
+//                        gesture_names.add(gesture);
+//                        gesture_id++;
+//                        Toast.makeText(getApplicationContext(),"Enter the " + gesture+ " template.", Toast.LENGTH_LONG).show();
+//                        return false;
+//                    default:
+//                        break;
+//                }
+//            }
+//            else
+//            {
+//                //record the data for recognition
+//                switch(event.getAction())
+//                {
+//                    case MotionEvent.ACTION_DOWN:
+//                        StoreSensorData = true;
+//                        return false;
+//                    case MotionEvent.ACTION_UP:
+//                        StoreSensorData = false;
+//                        int WhichGesture = Recognizer.GestureRecognition(templates, SensorData);
+//                        String gestureRecognized = gesture_names.get(WhichGesture);
+//                        Toast.makeText(getApplicationContext(),"It is " + gestureRecognized, Toast.LENGTH_LONG).show();
+//                        if(gestureRecognized == "left")
+//                        {
+//                            int lastSavedPage = mViewPager.getCurrentItem();
+////                        Toast.makeText(getApplicationContext(),"It is " + lastSavedPage, Toast.LENGTH_LONG).show();
+//                            lastSavedPage = lastSavedPage - 1;
+//                            mViewPager.setCurrentItem(lastSavedPage);
+//                        }
+//                        else if(gestureRecognized == "right")
+//                        {
+//                            int lastSavedPage = mViewPager.getCurrentItem();
+////                        Toast.makeText(getApplicationContext(),"It is " + lastSavedPage, Toast.LENGTH_LONG).show();
+//                            lastSavedPage = lastSavedPage + 1;
+//                            mViewPager.setCurrentItem(lastSavedPage);
+//                        }
+//                        else {
+//                            Toast.makeText(getApplicationContext(),"It is Nothing ", Toast.LENGTH_LONG).show();
+//                        }
+//                        SensorData.clear();
+//                        return false;
+//                    default:
+//                        break;
+//                }
+//            }
+//        }
+//    }
+
+
 }
