@@ -48,6 +48,13 @@ public class MenuActivity extends AppCompatActivity {
         new ListBookInfoTask().execute();
     }
 
+
+    public void onClickGesture(View v)
+    {
+        setContentView(R.layout.activity_gesture);
+    }
+
+
     private class ListBookInfoTask extends AsyncTask<Object, Object, List<BookInfo>> {
 
         private Exception occuredException;
